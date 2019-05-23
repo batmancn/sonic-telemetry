@@ -1,0 +1,10 @@
+// mint config interface
+syntax = "proto3";
+
+import "github.com/openconfig/gnmi/proto/gnmi/gnmi.proto";
+
+package gnmi.mintconfig;
+
+service mINTConfig {
+    rpc SetBGPPeerLinkState(port string, state string) returns (err string)
+}

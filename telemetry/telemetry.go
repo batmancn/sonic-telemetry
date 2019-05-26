@@ -1,10 +1,12 @@
 package main
 
 import (
+	"fmt"
 	"crypto/tls"
 	"crypto/x509"
 	"flag"
 	"io/ioutil"
+	"os"
 
 	log "github.com/golang/glog"
 	"google.golang.org/grpc"
@@ -87,7 +89,8 @@ func main() {
 		return
 	}
 
-	log.V(1).Infof("Starting RPC server on address: %s", s.Address())
+	fmt.Printf("Temp folder for log files: %s\n", os.TempDir())
+	log.Infof("Starting RPC server on address: %s", s.Address())
 	s.Serve() // blocks until close
 	log.Flush()
 }

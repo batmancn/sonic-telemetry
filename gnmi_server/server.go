@@ -6,6 +6,7 @@ import (
 	"net"
 	"strings"
 	"sync"
+	"time"
 
 	log "github.com/golang/glog"
 	"golang.org/x/net/context"
@@ -39,6 +40,17 @@ type Config struct {
 	// Port for the Server to listen on. If 0 or unset the Server will pick a port
 	// for this Server.
 	Port int64
+}
+
+// getFullPath builds the full path from the prefix and path.
+func getFullPath(path *gnmipb.Path) string {
+	fullPath := ""
+
+	for _, pathElem := range(path.GetElem()) {
+		fullPath += pathElem.GetName() + "/"
+	}
+
+    return fullPath
 }
 
 // New returns an initialized Server.
@@ -203,8 +215,56 @@ func (s *Server) Get(ctx context.Context, req *gnmipb.GetRequest) (*gnmipb.GetRe
 }
 
 // Set method is not implemented. Refer to gnxi for examples with openconfig integration
-func (srv *Server) Set(context.Context, *gnmipb.SetRequest) (*gnmipb.SetResponse, error) {
-	return nil, grpc.Errorf(codes.Unimplemented, "Set() is not implemented")
+func (srv *Server) Set(ctx context.Context, req *gnmipb.SetRequest) (*gnmipb.SetResponse, error) {
+	var target string
+	prefix := req.GetPrefix()
+	if prefix == nil {
+		return nil, status.Error(codes.Unimplemented, "No target specified in prefix")
+	}
+
+	target = prefix.GetTarget()
+	if target == "" {
+		return nil, status.Error(codes.Unimplemented, "Empty target data not supported yet")
+	}
+
+	// only support set mtnos
+	if target != "mtnos" {
+		return nil, status.Errorf(codes.Unimplemented, "unsupported request target")
+	}
+
+	log.Infof("SetRequest: %v", req)
+
+	var results []*gnmipb.UpdateResult
+	yc, err := sdc.NewYangClient()
+	if err != nil {
+		return nil, status.Error(codes.NotFound, err.Error())
+	}
+
+	for _, path := range req.GetReplace() {
+		// path
+		fp := getFullPath(path.GetPath())
+		// val
+		val := path.GetVal()
+		log.V(2).Infof("Replace path: %v", path)
+
+		err = yc.SetPb(&fp, val)
+		if err != nil {
+			return nil, err
+		}
+
+		res := gnmipb.UpdateResult{
+			Path: path.GetPath(),
+			Op:   gnmipb.UpdateResult_REPLACE,
+		}
+
+		results = append(results, &res)
+	}
+
+	return &gnmipb.SetResponse{
+		Timestamp: time.Now().UnixNano(),
+		Prefix:    req.GetPrefix(),
+		Response:  results,
+	}, nil
 }
 
 // Capabilities method is not implemented. Refer to gnxi for examples with openconfig integration

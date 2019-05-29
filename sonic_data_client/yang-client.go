@@ -48,7 +48,7 @@ func staticRoutesStaticFunc (val *gnmipb.TypedValue) error {
         }
     }
 
-    log.Infof("staticRoutesStaticFunc: op_str = %v", op_str)
+    log.Infof("Run CLI to set config: config static-route %v", op_str)
     // TBD, use CLI to add static route
 
     return nil

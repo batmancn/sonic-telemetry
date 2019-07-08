@@ -1,0 +1,20 @@
+
+syntax = "proto3";
+
+// Path:
+// bgp/neighbors/neighbor/state/neighbor-addresses
+// bgp/neighbors/neighbor/config/neighbor-addresses/address/activate-status
+
+package mt.proto;
+
+message NeighborAddress {
+    string remoteAddr = 1;
+    string localAddr = 2;
+    string asn = 3;
+    string activateState = 4;
+    string adminState = 5;
+}
+
+message NeighborAddresses {
+    repeated NeighborAddress na = 1;
+}

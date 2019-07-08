@@ -1,0 +1,19 @@
+
+syntax = "proto3";
+
+// Path:
+// rib/table/entries
+// rib/table/entries/entry[entryKey=forward_plane]
+// rib/table/entries/entry[entryKey=control_plane]
+// rib/table/entries/entry[entryKey=192.168.1.2/24]
+
+package mt.proto;
+
+message EntriesEntry {
+    string entryKey = 1;
+    string entryDetail = 2;
+}
+
+message RibTableEntries {
+    repeated EntriesEntry entry = 1;
+}

@@ -1,0 +1,49 @@
+syntax = "proto3";
+
+package mt.proto;
+
+// Paths:
+// local-routes/static-routes/static/next-hops/next-hop/state
+// local-routes/static-routes/static/next-hops/next-hop/config
+// local-routes/static-routes/static/next-hops/next-hop
+// local-routes/static-routes/static/next-hops
+// local-routes/static-routes/static
+// local-routes/static-routes
+// local-routes
+
+message NextHopState {
+    string index = 1;
+    string next_hop = 2;
+    uint32 metric = 3;
+    bool recurse = 4;
+}
+
+message NextHopConfig {
+    string index = 1;
+    string next_hop = 2;
+    uint32 metric = 3;
+    bool recurse = 4;
+}
+
+message NextHopsNextHop {
+    NextHopConfig config = 1;
+    NextHopState state = 2;
+}
+
+message StaticNextHops {
+    repeated NextHopsNextHop next_hop = 1;
+}
+
+message StaticRoutesStatic {
+    string address = 1;
+    StaticNextHops next_hops = 2;
+}
+
+message LocalRoutesStaticRoutes {
+    repeated StaticRoutesStatic route = 1;
+}
+
+message LocalRoutes {
+    LocalRoutesStaticRoutes static_routes = 1;
+}
+

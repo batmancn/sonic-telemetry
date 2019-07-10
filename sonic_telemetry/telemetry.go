@@ -1,19 +1,17 @@
 package main
 
 import (
-	"fmt"
 	"crypto/tls"
 	"crypto/x509"
 	"flag"
 	"io/ioutil"
-	"os"
 
 	log "github.com/golang/glog"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
 
-	gnmi "github.com/batmancn/sonic-telemetry/mt_server"
-	testcert "github.com/batmancn/sonic-telemetry/testdata/tls"
+	gnmi "github.com/Azure/sonic-telemetry/gnmi_server"
+	testcert "github.com/Azure/sonic-telemetry/testdata/tls"
 )
 
 var (
@@ -89,8 +87,7 @@ func main() {
 		return
 	}
 
-	fmt.Printf(" --- Temp folder for log files: %s\n", os.TempDir())
-	log.Infof("Starting RPC server on address: %s", s.Address())
+	log.V(1).Infof("Starting RPC server on address: %s", s.Address())
 	s.Serve() // blocks until close
 	log.Flush()
 }

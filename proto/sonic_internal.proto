@@ -3,7 +3,7 @@ syntax = "proto3";
 
 import "github.com/openconfig/gnmi/proto/gnmi/gnmi.proto";
 
-package gnmi.sonic;
+package mt.proto;
 
 
 enum State {

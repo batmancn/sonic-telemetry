@@ -1,4 +1,4 @@
-package mt_server
+package gnmi
 
 import (
 	"errors"
@@ -6,7 +6,6 @@ import (
 	"net"
 	"strings"
 	"sync"
-	"time"
 
 	log "github.com/golang/glog"
 	"golang.org/x/net/context"
@@ -15,14 +14,13 @@ import (
 	"google.golang.org/grpc/peer"
 	"google.golang.org/grpc/reflection"
 	"google.golang.org/grpc/status"
-	gnmipb "github.com/openconfig/gnmi/proto/gnmi"
 
-	sdc "github.com/batmancn/sonic-telemetry/mt_data_client"
-	spb "github.com/batmancn/sonic-telemetry/mt_proto"
+	sdc "github.com/Azure/sonic-telemetry/sonic_data_client"
+	gnmipb "github.com/openconfig/gnmi/proto/gnmi"
 )
 
 var (
-	supportedEncodings = []gnmipb.Encoding{gnmipb.Encoding_JSON, gnmipb.Encoding_JSON_IETF, gnmipb.Encoding_PROTO}
+	supportedEncodings = []gnmipb.Encoding{gnmipb.Encoding_JSON, gnmipb.Encoding_JSON_IETF}
 )
 
 // Server manages a single gNMI Server implementation. Each client that connects
@@ -41,21 +39,6 @@ type Config struct {
 	// Port for the Server to listen on. If 0 or unset the Server will pick a port
 	// for this Server.
 	Port int64
-}
-
-func printTypedVal(val *gnmipb.TypedValue) {
-	log.Infof("printTypedVal: %s", val.String())
-}
-
-// getFullPath builds the full path from the prefix and path.
-func getFullPath(path *gnmipb.Path) string {
-	fullPath := ""
-
-	for _, pathElem := range(path.GetElem()) {
-		fullPath += pathElem.GetName() + "/"
-	}
-
-    return fullPath
 }
 
 // New returns an initialized Server.
@@ -166,7 +149,6 @@ func (s *Server) checkEncodingAndModel(encoding gnmipb.Encoding, models []*gnmip
 func (s *Server) Get(ctx context.Context, req *gnmipb.GetRequest) (*gnmipb.GetResponse, error) {
 	var err error
 
-	// check request type
 	if req.GetType() != gnmipb.GetRequest_ALL {
 		return nil, status.Errorf(codes.Unimplemented, "unsupported request type: %s", gnmipb.GetRequest_DataType_name[int32(req.GetType())])
 	}
@@ -175,7 +157,6 @@ func (s *Server) Get(ctx context.Context, req *gnmipb.GetRequest) (*gnmipb.GetRe
 		return nil, status.Error(codes.Unimplemented, err.Error())
 	}
 
-	// check target
 	var target string
 	prefix := req.GetPrefix()
 	if prefix == nil {
@@ -187,41 +168,25 @@ func (s *Server) Get(ctx context.Context, req *gnmipb.GetRequest) (*gnmipb.GetRe
 		}
 	}
 
-	var spbValues []*spb.Value
 	paths := req.GetPath()
-	log.Infof("target: " + target)
-	if target == "MTNOS" {
-		yc, err := sdc.NewYangClient(paths)
+	log.V(5).Infof("GetRequest paths: %v", paths)
 
-		if err != nil {
-			return nil, status.Error(codes.NotFound, err.Error())
-		}
-
-		spbValues, err = yc.GetPb()
-		if err != nil {
-			return nil, status.Error(codes.NotFound, err.Error())
-		}
-	} else if target == "CONFIG_DB" || target == "COUNTERS_DB" {
-		dc, err := sdc.NewDbClient(paths, prefix)
-
-		if err != nil {
-			return nil, status.Error(codes.NotFound, err.Error())
-		}
-
-		spbValues, err = dc.Get(nil)
-		if err != nil {
-			return nil, status.Error(codes.NotFound, err.Error())
-		}
+	var dc sdc.Client
+	if target == "OTHERS" {
+		dc, err = sdc.NewNonDbClient(paths, prefix)
 	} else {
-		log.Infof("target: " + target)
-		return nil, fmt.Errorf("target %s not supported", target)
+		dc, err = sdc.NewDbClient(paths, prefix)
+	}
+	if err != nil {
+		return nil, status.Error(codes.NotFound, err.Error())
+	}
+	notifications := make([]*gnmipb.Notification, len(paths))
+	spbValues, err := dc.Get(nil)
+	if err != nil {
+		return nil, status.Error(codes.NotFound, err.Error())
 	}
 
-	// make getResponse
-	notifications := make([]*gnmipb.Notification, len(paths))
 	for index, spbValue := range spbValues {
-		//printTypedVal(spbValue.GetVal())
-
 		update := &gnmipb.Update{
 			Path: spbValue.GetPath(),
 			Val:  spbValue.GetVal(),
@@ -237,54 +202,9 @@ func (s *Server) Get(ctx context.Context, req *gnmipb.GetRequest) (*gnmipb.GetRe
 	return &gnmipb.GetResponse{Notification: notifications}, nil
 }
 
-// Set method
-func (srv *Server) Set(ctx context.Context, req *gnmipb.SetRequest) (*gnmipb.SetResponse, error) {
-	var target string
-
-	// check setRequest type
-	prefix := req.GetPrefix()
-	if prefix == nil {
-		return nil, status.Error(codes.Unimplemented, "No target specified in prefix")
-	}
-
-	// check target
-	target = prefix.GetTarget()
-	if target == "" {
-		return nil, status.Error(codes.Unimplemented, "Empty target data not supported yet")
-	} else if target != "MTNOS" {
-		return nil, status.Errorf(codes.Unimplemented, "unsupported request target")
-	}
-
-	// new yc to process setRequest
-	log.Infof("SetRequest: %v", req)
-	var results []*gnmipb.UpdateResult
-	yc, err := sdc.NewYangClient([]*gnmipb.Path{})
-	if err != nil {
-		return nil, status.Error(codes.NotFound, err.Error())
-	}
-
-	for _, path := range req.GetReplace() {
-		log.Infof("Replace path: %s", getFullPath(path.GetPath()))
-
-		err = yc.SetPb(path.GetPath(), path.GetVal())
-		if err != nil {
-			return nil, err
-		}
-
-		res := gnmipb.UpdateResult{
-			Path: path.GetPath(),
-			Op:   gnmipb.UpdateResult_REPLACE,
-		}
-
-		results = append(results, &res)
-	}
-
-	// make setResponse
-	return &gnmipb.SetResponse{
-		Timestamp: time.Now().UnixNano(),
-		Prefix:    req.GetPrefix(),
-		Response:  results,
-	}, nil
+// Set method is not implemented. Refer to gnxi for examples with openconfig integration
+func (srv *Server) Set(context.Context, *gnmipb.SetRequest) (*gnmipb.SetResponse, error) {
+	return nil, grpc.Errorf(codes.Unimplemented, "Set() is not implemented")
 }
 
 // Capabilities method is not implemented. Refer to gnxi for examples with openconfig integration

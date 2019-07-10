@@ -1,4 +1,4 @@
-package gnmi
+package mt_server
 
 import (
 	"fmt"
@@ -10,10 +10,9 @@ import (
 	"github.com/workiva/go-datastructures/queue"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
-
-	//spb "github.com/Azure/sonic-telemetry/proto"
-	sdc "github.com/Azure/sonic-telemetry/sonic_data_client"
 	gnmipb "github.com/openconfig/gnmi/proto/gnmi"
+
+	mdc "github.com/batmancn/sonic-telemetry/sonic_data_client"
 )
 
 // Client contains information about a subscribe client that has connected to the server.
@@ -116,11 +115,11 @@ func (c *Client) Run(stream gnmipb.GNMI_SubscribeServer) (err error) {
 	if err != nil {
 		return grpc.Errorf(codes.NotFound, "Invalid subscription path: %v %q", err, query)
 	}
-	var dc sdc.Client
-	if target == "OTHERS" {
-		dc, err = sdc.NewNonDbClient(paths, prefix)
-	} else {
-		dc, err = sdc.NewDbClient(paths, prefix)
+	yc, err := mdc.NewYangClient(paths)
+	if err != nil {
+		return err
+	} else if target != mdc.YcTarget {
+		return fmt.Errorf("Only support %s target", mdc.YcTarget)
 	}
 
 	if err != nil {
@@ -131,12 +130,12 @@ func (c *Client) Run(stream gnmipb.GNMI_SubscribeServer) (err error) {
 	case gnmipb.SubscriptionList_STREAM:
 		c.stop = make(chan struct{}, 1)
 		c.w.Add(1)
-		go dc.StreamRun(c.q, c.stop, &c.w)
+		go yc.StreamRun(c.q, c.stop, &c.w)
 	case gnmipb.SubscriptionList_POLL:
 		c.polled = make(chan struct{}, 1)
 		c.polled <- struct{}{}
 		c.w.Add(1)
-		go dc.PollRun(c.q, c.polled, &c.w)
+		go yc.PollRun(c.q, c.polled, &c.w)
 	case gnmipb.SubscriptionList_ONCE:
 		return grpc.Errorf(codes.Unimplemented, "SubscriptionList_ONCE is not implemented for SONiC gRPC/gNMI yet: %q", query)
 	default:
@@ -221,8 +220,8 @@ func (c *Client) send(stream gnmipb.GNMI_SubscribeServer) error {
 
 		var resp *gnmipb.SubscribeResponse
 		switch v := items[0].(type) {
-		case sdc.Value:
-			if resp, err = sdc.ValToResp(v); err != nil {
+		case mdc.Value:
+			if resp, err = mdc.ValToResp(v); err != nil {
 				c.errors++
 				return err
 			}

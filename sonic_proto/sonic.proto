@@ -3,7 +3,7 @@ syntax = "proto3";
 
 import "github.com/openconfig/gnmi/proto/gnmi/gnmi.proto";
 
-package mt.proto;
+package gnmi.sonic;
 
 // target - the name of the target for which the path is a member. Only set in prefix for a path.
 enum Target {

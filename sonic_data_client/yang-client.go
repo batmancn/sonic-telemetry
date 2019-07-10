@@ -14,7 +14,7 @@ import (
     proto "github.com/golang/protobuf/proto"
     "github.com/workiva/go-datastructures/queue"
 
-    mt_proto "github.com/batmancn/sonic-telemetry/mt_proto"
+    mt_proto "github.com/batmancn/sonic-telemetry/proto"
 )
 
 type ConfigClient struct {

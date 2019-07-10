@@ -14,11 +14,10 @@ import (
 
 	log "github.com/golang/glog"
 
+	spb "github.com/Azure/sonic-telemetry/proto"
 	"github.com/go-redis/redis"
 	gnmipb "github.com/openconfig/gnmi/proto/gnmi"
 	"github.com/workiva/go-datastructures/queue"
-
-	spb "github.com/batmancn/sonic-telemetry/mt_proto"
 )
 
 const (
@@ -45,8 +44,6 @@ type Client interface {
 	PollRun(q *queue.PriorityQueue, poll chan struct{}, w *sync.WaitGroup)
 	// Get return data from the data source in format of *spb.Value
 	Get(w *sync.WaitGroup) ([]*spb.Value, error)
-	// Set data
-	Set(fieldVal interface{}) ([]*spb.Value, error)
 	// Close provides implemenation for explicit cleanup of Client
 	Close() error
 }
@@ -257,36 +254,14 @@ func (c *DbClient) Get(w *sync.WaitGroup) ([]*spb.Value, error) {
 			Val:       val,
 		})
 	}
-	log.Infof("Getting #%v", values)
-	log.Infof("Get done, total time taken: %v ms", int64(time.Since(ts)/time.Millisecond))
+	log.V(6).Infof("Getting #%v", values)
+	log.V(4).Infof("Get done, total time taken: %v ms", int64(time.Since(ts)/time.Millisecond))
 	return values, nil
 }
 
 // TODO: Log data related to this session
 func (c *DbClient) Close() error {
 	return nil
-}
-
-func (c *DbClient) Set(fieldVal interface{}) ([]*spb.Value, error) {
-	var values []*spb.Value
-	ts := time.Now()
-	for gnmiPath, tblPaths := range c.pathG2S {
-		op := "set"
-		val, err := tableDataOp(tblPaths[0], &op, fieldVal)
-		if err != nil {
-			return nil, err
-		}
-
-		values = append(values, &spb.Value{
-			Prefix:    c.prefix,
-			Path:      gnmiPath,
-			Timestamp: ts.UnixNano(),
-			Val:       val,
-		})
-	}
-	log.Infof("Setting #%v", values)
-	log.Infof("Set done, total time taken: %v ms", int64(time.Since(ts)/time.Millisecond))
-	return values, nil
 }
 
 // Convert from SONiC Value to its corresponding gNMI proto stream
@@ -658,7 +633,7 @@ func tableData2TypedValue(tblPaths []tablePath, op *string) (*gnmipb.TypedValue,
 
 				val, err := redisDb.HGet(key, tblPath.field).Result()
 				if err != nil {
-					log.Infof("redis HGet failed for %v", tblPath)
+					log.V(2).Infof("redis HGet failed for %v", tblPath)
 					return nil, err
 				}
 				// TODO: support multiple table paths
@@ -674,53 +649,6 @@ func tableData2TypedValue(tblPaths []tablePath, op *string) (*gnmipb.TypedValue,
 			return nil, err
 		}
 	}
-	return msi2TypedValue(msi)
-}
-
-func tableDataOp(tblPath tablePath, op *string, fieldVal interface{}) (*gnmipb.TypedValue, error) {
-	var useKey bool
-	msi := make(map[string]interface{})
-
-	redisDb := Target2RedisDb[tblPath.dbName]
-
-	if tblPath.jsonField == "" && fieldVal != nil {
-		var key string
-		if tblPath.tableKey != "" {
-			key = tblPath.tableName + tblPath.delimitor + tblPath.tableKey
-		} else {
-			key = tblPath.tableName
-		}
-
-		var val string
-		var err error
-		if op != nil && *op == "set" {
-			var res bool
-			res, err = redisDb.HSet(key, tblPath.field, fieldVal).Result()
-			val = strconv.FormatBool(res)
-			if err != nil {
-				log.Infof("redis HSet failed for %v", tblPath)
-				return nil, err
-			}
-		} else {
-			val, err = redisDb.HGet(key, tblPath.field).Result()
-			if err != nil {
-				log.Infof("redis HGet failed for %v", tblPath)
-				return nil, err
-			}
-		}
-
-		// TODO: support multiple table paths
-		return &gnmipb.TypedValue{
-			Value: &gnmipb.TypedValue_StringVal{
-				StringVal: val,
-			}}, nil
-	}
-
-	err := tableData2Msi(&tblPath, useKey, nil, &msi)
-	if err != nil {
-		return nil, err
-	}
-
 	return msi2TypedValue(msi)
 }
 
